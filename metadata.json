@@ -1,0 +1,6 @@
+{
+  "name": "Crypto Pi Token",
+  "description": "Tap-to-mine Pi Network Mainnet dashboard with passive node earnings, repeatable upgrades, global leaderboard, daily crypto quiz, and Gemini AI insights.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

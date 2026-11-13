@@ -1,0 +1,212 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Private user account identity and PII isolated from public leaderboard records.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Authentication user ID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Verified account email address.",
+          "minLength": 3,
+          "maxLength": 254
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Player display name.",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when account was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when account was last updated."
+        }
+      },
+      "required": ["uid", "email", "displayName", "createdAt", "updatedAt"]
+    },
+    "MinerProfile": {
+      "title": "MinerProfile",
+      "description": "Public miner state, upgrade levels, and leaderboard ranking entry without PII.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Authentication user ID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "piHandle": {
+          "type": "string",
+          "description": "Public Pi Network pioneer handle shown on the leaderboard.",
+          "minLength": 2,
+          "maxLength": 32,
+          "pattern": "^[a-zA-Z0-9_.-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Public display name shown on the leaderboard.",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "photoUrl": {
+          "type": "string",
+          "description": "Optional public avatar URL.",
+          "maxLength": 512
+        },
+        "isPublic": {
+          "type": "boolean",
+          "description": "Controls public visibility on the global mainnet leaderboard."
+        },
+        "balance": {
+          "type": "number",
+          "description": "Current spendable Pi coin balance."
+        },
+        "totalMined": {
+          "type": "number",
+          "description": "Lifetime total Pi coins mined for global leaderboard ranking."
+        },
+        "tapLevel": {
+          "type": "integer",
+          "description": "Quantum Tap Core upgrade level."
+        },
+        "passiveLevel": {
+          "type": "integer",
+          "description": "Node Validator Rig passive rate upgrade level."
+        },
+        "consensusLevel": {
+          "type": "integer",
+          "description": "Mainnet Consensus Boost upgrade level."
+        },
+        "vaultLevel": {
+          "type": "integer",
+          "description": "Pi Vault Overclock upgrade level."
+        },
+        "lastCollectAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of last passive mining collection."
+        },
+        "lastQuizDate": {
+          "type": "string",
+          "description": "UTC date string (YYYY-MM-DD) of the most recent completed daily quiz.",
+          "maxLength": 10,
+          "pattern": "^(\\d{4}-\\d{2}-\\d{2})?$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when miner profile was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when miner profile was last updated."
+        }
+      },
+      "required": [
+        "uid",
+        "piHandle",
+        "displayName",
+        "photoUrl",
+        "isPublic",
+        "balance",
+        "totalMined",
+        "tapLevel",
+        "passiveLevel",
+        "consensusLevel",
+        "vaultLevel",
+        "lastCollectAt",
+        "lastQuizDate",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "QuizAttempt": {
+      "title": "QuizAttempt",
+      "description": "Immutable daily crypto quiz completion record for a specific UTC date.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Owner Firebase Authentication user ID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "dateKey": {
+          "type": "string",
+          "description": "UTC date key in YYYY-MM-DD format.",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "score": {
+          "type": "integer",
+          "description": "Number of questions answered correctly."
+        },
+        "totalQuestions": {
+          "type": "integer",
+          "description": "Total number of questions in the daily set."
+        },
+        "coinsEarned": {
+          "type": "number",
+          "description": "Total bonus Pi coins earned from this daily quiz."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["completed"],
+          "description": "Terminal completion state for the daily quiz attempt."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the daily quiz was completed."
+        }
+      },
+      "required": [
+        "uid",
+        "dateKey",
+        "score",
+        "totalQuestions",
+        "coinsEarned",
+        "status",
+        "createdAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserProfile"
+      },
+      "description": "Private user account records containing email PII, accessible only to the owning user."
+    },
+    "/users/{userId}/quiz_attempts/{dateId}": {
+      "schema": {
+        "$ref": "#/entities/QuizAttempt"
+      },
+      "description": "Daily quiz completion records keyed by UTC YYYY-MM-DD date, created once per day."
+    },
+    "/leaderboard/{userId}": {
+      "schema": {
+        "$ref": "#/entities/MinerProfile"
+      },
+      "description": "Public miner state and global leaderboard ranking entries without any PII."
+    }
+  }
+}

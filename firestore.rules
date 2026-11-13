@@ -1,0 +1,178 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Primitive Helpers
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Entity Validators
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'email', 'displayName', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'email', 'displayName', 'createdAt', 'updatedAt'])
+        && data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 && data.uid == request.auth.uid
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 254
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 64
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidMinerProfile(data) {
+      return data.keys().hasAll([
+          'uid', 'piHandle', 'displayName', 'photoUrl', 'isPublic',
+          'balance', 'totalMined', 'tapLevel', 'passiveLevel',
+          'consensusLevel', 'vaultLevel', 'lastCollectAt', 'lastQuizDate',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'piHandle', 'displayName', 'photoUrl', 'isPublic',
+          'balance', 'totalMined', 'tapLevel', 'passiveLevel',
+          'consensusLevel', 'vaultLevel', 'lastCollectAt', 'lastQuizDate',
+          'createdAt', 'updatedAt'
+        ])
+        && data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 && data.uid == request.auth.uid
+        && data.piHandle is string && data.piHandle.size() >= 2 && data.piHandle.size() <= 32 && data.piHandle.matches('^[a-zA-Z0-9_.-]+$')
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 64
+        && data.photoUrl is string && data.photoUrl.size() <= 512
+        && data.isPublic is bool && data.isPublic == true
+        && data.balance is number && data.balance >= 0 && data.balance <= 1000000000000
+        && data.totalMined is number && data.totalMined >= 0 && data.totalMined <= 1000000000000
+        && data.tapLevel is int && data.tapLevel >= 1 && data.tapLevel <= 1000
+        && data.passiveLevel is int && data.passiveLevel >= 0 && data.passiveLevel <= 1000
+        && data.consensusLevel is int && data.consensusLevel >= 0 && data.consensusLevel <= 1000
+        && data.vaultLevel is int && data.vaultLevel >= 0 && data.vaultLevel <= 1000
+        && data.lastCollectAt is timestamp
+        && data.lastQuizDate is string && data.lastQuizDate.size() <= 10 && data.lastQuizDate.matches('^([0-9]{4}-[0-9]{2}-[0-9]{2})?$')
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidQuizAttempt(data, dateId) {
+      return data.keys().hasAll(['uid', 'dateKey', 'score', 'totalQuestions', 'coinsEarned', 'status', 'createdAt'])
+        && data.keys().hasOnly(['uid', 'dateKey', 'score', 'totalQuestions', 'coinsEarned', 'status', 'createdAt'])
+        && data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 && data.uid == request.auth.uid
+        && data.dateKey is string && data.dateKey.size() == 10 && data.dateKey.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') && data.dateKey == dateId
+        && data.score is int && data.score >= 0 && data.score <= 10
+        && data.totalQuestions is int && data.totalQuestions >= 1 && data.totalQuestions <= 10
+        && data.coinsEarned is number && data.coinsEarned >= 0 && data.coinsEarned <= 100000
+        && data.status is string && data.status == 'completed'
+        && data.createdAt is timestamp;
+    }
+
+    // Action Helpers for MinerProfile Updates
+    function isMineOrCollectAction() {
+      return incoming().diff(existing()).affectedKeys().hasOnly(['balance', 'totalMined', 'lastCollectAt', 'updatedAt'])
+        && incoming().balance >= existing().balance
+        && incoming().totalMined >= existing().totalMined
+        && (incoming().lastCollectAt == existing().lastCollectAt || incoming().lastCollectAt == request.time);
+    }
+
+    function isUpgradeAction() {
+      return incoming().diff(existing()).affectedKeys().hasOnly(['balance', 'tapLevel', 'passiveLevel', 'consensusLevel', 'vaultLevel', 'updatedAt'])
+        && incoming().balance < existing().balance
+        && incoming().tapLevel >= existing().tapLevel
+        && incoming().passiveLevel >= existing().passiveLevel
+        && incoming().consensusLevel >= existing().consensusLevel
+        && incoming().vaultLevel >= existing().vaultLevel
+        && (
+          incoming().tapLevel > existing().tapLevel ||
+          incoming().passiveLevel > existing().passiveLevel ||
+          incoming().consensusLevel > existing().consensusLevel ||
+          incoming().vaultLevel > existing().vaultLevel
+        );
+    }
+
+    function isQuizRewardAction(userId) {
+      return incoming().diff(existing()).affectedKeys().hasOnly(['balance', 'totalMined', 'lastQuizDate', 'updatedAt'])
+        && incoming().balance >= existing().balance
+        && incoming().totalMined >= existing().totalMined
+        && incoming().lastQuizDate.size() == 10
+        && incoming().lastQuizDate != existing().lastQuizDate
+        && existsAfter(/databases/$(database)/documents/users/$(userId)/quiz_attempts/$(incoming().lastQuizDate));
+    }
+
+    function isHandleUpdateAction() {
+      return incoming().diff(existing()).affectedKeys().hasOnly(['piHandle', 'displayName', 'photoUrl', 'updatedAt']);
+    }
+
+    // Private User Profile Collection (PII isolated)
+    match /users/{userId} {
+      allow get: if isValidId(userId) && isOwner(userId);
+      allow list: if false;
+      allow create: if isVerified() && isValidId(userId) && isOwner(userId)
+        && isValidUserProfile(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isVerified() && isValidId(userId) && isOwner(userId)
+        && isValidUserProfile(incoming())
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'email', 'updatedAt']);
+      allow delete: if false;
+
+      // Daily Quiz Attempts Subcollection (Master Gate + Terminal State Lock)
+      match /quiz_attempts/{dateId} {
+        allow get: if isValidId(userId) && isValidId(dateId) && isOwner(userId)
+          && exists(/databases/$(database)/documents/users/$(userId));
+        allow list: if isValidId(userId) && isOwner(userId)
+          && resource.data.uid == request.auth.uid;
+        allow create: if isVerified() && isValidId(userId) && isValidId(dateId) && isOwner(userId)
+          && isValidQuizAttempt(incoming(), dateId)
+          && incoming().createdAt == request.time
+          && get(/databases/$(database)/documents/users/$(userId)).data.uid == request.auth.uid;
+        allow update: if false;
+        allow delete: if false;
+      }
+    }
+
+    // Public Leaderboard & Miner State Collection (Zero PII)
+    match /leaderboard/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || (resource != null && resource.data.isPublic == true));
+      allow list: if resource.data.totalMined >= 0;
+      allow create: if isVerified() && isValidId(userId) && isOwner(userId)
+        && isValidMinerProfile(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && incoming().lastCollectAt == request.time;
+      allow update: if isVerified() && isValidId(userId) && isOwner(userId)
+        && isValidMinerProfile(incoming())
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isMineOrCollectAction() ||
+          isUpgradeAction() ||
+          isQuizRewardAction(userId) ||
+          isHandleUpdateAction()
+        );
+      allow delete: if false;
+    }
+  }
+}
